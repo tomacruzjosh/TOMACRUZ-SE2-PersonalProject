@@ -1,0 +1,143 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId} (matches auth.uid)
+    // Fields:
+    //   - uid: string (required) - The Firebase Auth UID
+    //   - email: string (required) - The institutional email
+    //   - fullName: string (required) - The full name
+    //   - role: string (required, 'admin' or 'user') - The role
+    //   - college_office: string (optional initially, required after setup) - College/Office
+    //   - isSetupComplete: boolean (required) - Setup status
+    //   - isBlocked: boolean (required) - Block status
+    //   - createdAt: timestamp (required) - Creation time
+    //
+    // Collection: logs
+    // Document ID: {logId}
+    // Fields:
+    //   - uid: string (required) - The Firebase Auth UID
+    //   - timestamp: timestamp (required) - The time of the visit
+    //   - reason: string (required) - The reason for the visit
+    //   - userEmail: string (required) - The institutional email
+    //   - college_office: string (required) - College/Office
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          ((request.auth.token.email == "tomacruzj415@gmail.com" || request.auth.token.email == "jcesperanza@neu.edu.ph") && request.auth.token.email_verified == true));
+    }
+
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid;
+    }
+
+    function uidNotModified() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == resource.data.uid;
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function hasOnlyAllowedUserFields() {
+      return request.resource.data.keys().hasOnly(['uid', 'email', 'fullName', 'role', 'college_office', 'isSetupComplete', 'isBlocked', 'createdAt']);
+    }
+
+    function isValidUserCreate() {
+      return hasOnlyAllowedUserFields() &&
+             request.resource.data.uid is string && request.resource.data.uid.size() > 0 &&
+             isValidEmail(request.resource.data.email) &&
+             request.resource.data.fullName is string && request.resource.data.fullName.size() > 0 && request.resource.data.fullName.size() < 100 &&
+             request.resource.data.role in ['admin', 'user'] &&
+             request.resource.data.isSetupComplete is bool &&
+             request.resource.data.isBlocked is bool &&
+             request.resource.data.createdAt is timestamp &&
+             (!('college_office' in request.resource.data) || (request.resource.data.college_office is string && request.resource.data.college_office.size() < 100));
+    }
+
+    function isValidUserUpdate() {
+      return hasOnlyAllowedUserFields() &&
+             (!('uid' in request.resource.data) || (request.resource.data.uid is string && request.resource.data.uid.size() > 0)) &&
+             (!('email' in request.resource.data) || isValidEmail(request.resource.data.email)) &&
+             (!('fullName' in request.resource.data) || (request.resource.data.fullName is string && request.resource.data.fullName.size() > 0 && request.resource.data.fullName.size() < 100)) &&
+             (!('role' in request.resource.data) || request.resource.data.role in ['admin', 'user']) &&
+             (!('isSetupComplete' in request.resource.data) || request.resource.data.isSetupComplete is bool) &&
+             (!('isBlocked' in request.resource.data) || request.resource.data.isBlocked is bool) &&
+             (!('createdAt' in request.resource.data) || request.resource.data.createdAt is timestamp) &&
+             (!('college_office' in request.resource.data) || (request.resource.data.college_office is string && request.resource.data.college_office.size() < 100));
+    }
+
+    function immutableFieldsUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['uid', 'createdAt', 'email']);
+    }
+
+    function hasOnlyAllowedLogFields() {
+      return request.resource.data.keys().hasOnly(['uid', 'timestamp', 'reason', 'userEmail', 'college_office']);
+    }
+
+    function isValidLogCreate() {
+      return hasOnlyAllowedLogFields() &&
+             request.resource.data.uid is string && request.resource.data.uid.size() > 0 &&
+             request.resource.data.timestamp is timestamp &&
+             request.resource.data.reason in ['Reading', 'Research', 'Computer Use', 'Studying'] &&
+             isValidEmail(request.resource.data.userEmail) &&
+             request.resource.data.college_office is string && request.resource.data.college_office.size() > 0 && request.resource.data.college_office.size() < 100;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      // Users can read their own profile, admins can read all
+      allow read: if isOwner(userId) || isAdmin();
+
+      // Users can create their own profile. They cannot make themselves admin.
+      allow create: if isOwner(userId) &&
+                       isValidUserCreate() &&
+                       uidUnchanged() &&
+                       (request.resource.data.role == 'user' || isAdmin()) &&
+                       (request.resource.data.isBlocked == false || isAdmin());
+
+      // Users can update their own profile (e.g., onboarding). They cannot change role or block status.
+      allow update: if (isOwner(userId) &&
+                        isValidUserUpdate() &&
+                        uidNotModified() &&
+                        immutableFieldsUnchanged() &&
+                        (!('role' in request.resource.data) || request.resource.data.role == resource.data.role) &&
+                        (!('isBlocked' in request.resource.data) || request.resource.data.isBlocked == resource.data.isBlocked)) ||
+                       (isAdmin() && isValidUserUpdate() && uidNotModified() && immutableFieldsUnchanged());
+
+      allow delete: if isAdmin();
+    }
+
+    match /logs/{logId} {
+      allow read: if isAdmin() || isOwner(resource.data.uid);
+      allow create: if isOwner(request.resource.data.uid) && 
+                       isValidLogCreate() &&
+                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isBlocked == false;
+      allow update: if false; // Logs are immutable
+      allow delete: if isAdmin();
+    }
+  }
+}

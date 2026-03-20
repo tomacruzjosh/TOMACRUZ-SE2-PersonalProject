@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the New Era University Library app.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "The Firebase Auth UID of the user."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "The institutional email of the user."
+        },
+        "fullName": {
+          "type": "string",
+          "description": "The full name of the user."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "user"],
+          "description": "The role of the user."
+        },
+        "college_office": {
+          "type": "string",
+          "description": "The college or office the user belongs to."
+        },
+        "isSetupComplete": {
+          "type": "boolean",
+          "description": "Whether the user has completed the onboarding process."
+        },
+        "isBlocked": {
+          "type": "boolean",
+          "description": "Whether the user is blocked from entering the library."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The timestamp when the user was created."
+        }
+      },
+      "required": ["uid", "email", "fullName", "role", "isSetupComplete", "isBlocked", "createdAt"]
+    },
+    "Log": {
+      "title": "Log",
+      "description": "A visitor log entry.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "The Firebase Auth UID of the user."
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The time of the visit."
+        },
+        "reason": {
+          "type": "string",
+          "enum": ["Reading", "Research", "Computer Use", "Studying"],
+          "description": "The reason for the visit."
+        },
+        "userEmail": {
+          "type": "string",
+          "format": "email",
+          "description": "The institutional email of the user."
+        },
+        "college_office": {
+          "type": "string",
+          "description": "The college or office the user belongs to."
+        }
+      },
+      "required": ["uid", "timestamp", "reason", "userEmail", "college_office"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/User"
+      },
+      "description": "Stores user profiles."
+    },
+    "/logs/{logId}": {
+      "schema": {
+        "$ref": "#/entities/Log"
+      },
+      "description": "Stores visitor logs."
+    }
+  }
+}

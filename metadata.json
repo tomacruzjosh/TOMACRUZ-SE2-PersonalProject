@@ -1,0 +1,5 @@
+{
+  "name": "NEU Library Visitor App",
+  "description": "A web and mobile adaptable app to record logs of students, faculty, and employees visiting the New Era University Library.",
+  "requestFramePermissions": []
+}
